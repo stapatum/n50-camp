@@ -5,6 +5,7 @@
     { "label": "Merch", "url": "/merch", "placement": "top", "pageSlug": "merch" },
     { "label": "Engeln", "url": "https://engel.n50.camp", "placement": "top" },
     { "label": "Tickets", "url": "https://tickets.n50.camp", "placement": "top" },
+    { "label": "Netzwerk", "url": "/netzwerk", "placement": "top", "pageSlug": "netzwerk" },
     { "label": "Code Of Conduct", "url": "/codeofconduct", "placement": "bottom", "pageSlug": "codeofconduct" },
     { "label": "Datenschutzerklärung", "url": "https://n50.lat/privacypolicy.html", "placement": "bottom" },
     { "label": "Impressum", "url": "https://n50.lat/imprint.html", "placement": "bottom" },

@@ -429,7 +429,7 @@
                       + " --data-urlencode id=" + nav_id + " " + base + "/admin/nav"
                   )
                   html = machine.succeed("curl -sf " + base + "/")
-                  assert html.index("Testlink") < html.index("Tickets"), "nav reorder had no effect"
+                  assert html.index("Testlink") < html.index("Netzwerk"), "nav reorder had no effect"
                   # delete the test link
                   machine.succeed(
                       "curl -sf -X POST " + auth
