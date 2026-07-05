@@ -41,10 +41,32 @@ const props = Astro.props;
       class="cap"
       style="width:261.36px;height:524.40px;transform:translate3d(-177.10px,-262.08px,377.45px)"
     >
-      <svg viewBox="0 0 261.36 524.40">
+      <!-- front cap: chevron plus the two posts reaching above the apex. The
+           posts extend to x=-58.75, so the viewBox is widened and the svg is
+           sized/shifted to keep 1 unit = 1px with svg x=0 on the cap's edge. -->
+      <svg
+        viewBox="-58.75 0 320.11 524.40"
+        style="width:320.11px;height:524.40px;margin-left:-58.75px"
+      >
         <polygon
-          points="261.36,0.00 0.00,261.84 260.04,524.40 249.72,468.48 42.60,261.84 248.88,56.04"
+          points="42.60,261.84 248.88,56.04 261.36,0.00 21.15,238.01 -37.22,181.16 -57.91,202.41 0.25,260.59 -58.75,320.70 -37.90,341.38 20.39,282.21 260.04,524.40 249.72,468.48"
         ></polygon>
+        <text
+          x="-254.35"
+          y="209.05"
+          font-weight="bold"
+          transform="rotate(-45)"
+          style="font-family:'Dinish',sans-serif;font-size:29.33px;fill:#000"
+          >8,1°E</text
+        >
+        <text
+          x="-172.28"
+          y="-158.26"
+          font-weight="bold"
+          transform="rotate(-135)"
+          style="font-family:'Dinish',sans-serif;font-size:29.33px;fill:#000"
+          >50°N</text
+        >
       </svg>
     </div>
     <div
