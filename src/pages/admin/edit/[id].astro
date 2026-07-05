@@ -1,0 +1,118 @@
+---
+import Admin from "../../../layouts/Admin.astro";
+import {
+  deletePage,
+  enhanceImages,
+  getPage,
+  RESERVED_SLUGS,
+  SLUG_RE,
+  updatePage,
+} from "../../../lib/db";
+
+const id = Number(Astro.params.id);
+let page = getPage(id);
+if (!page) return new Response(null, { status: 404 });
+
+// The home page (slug "index") is special: it renders through index.astro,
+// not [slug].astro, so the inline preview and the footer-nav toggle don't
+// apply to it.
+const isHome = page.slug === "index";
+
+let error: string | null = null;
+let showPreview = false;
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const action = form.get("action");
+
+  if (action === "delete") {
+    deletePage(id);
+    return Astro.redirect("/admin", 303);
+  }
+
+  const fields = {
+    slug: String(form.get("slug") ?? "").trim(),
+    title: String(form.get("title") ?? "").trim(),
+    html: String(form.get("html") ?? ""),
+    published: form.has("published") ? 1 : 0,
+    // the home page can never appear in the footer nav
+    show_in_nav: isHome ? 0 : form.has("show_in_nav") ? 1 : 0,
+  };
+
+  // Reserved slugs are only blocked when *renaming* into them — keeping a
+  // page's own reserved slug (e.g. editing the seeded "index" page) is fine.
+  const slugChanged = fields.slug !== page.slug;
+  if (!SLUG_RE.test(fields.slug) || (slugChanged && RESERVED_SLUGS.has(fields.slug))) {
+    error = "Ungültiger oder reservierter Slug (erlaubt: a-z, 0-9, Bindestrich).";
+  } else if (!fields.title) {
+    error = "Titel fehlt.";
+  } else {
+    try {
+      updatePage(id, fields);
+    } catch {
+      error = "Slug bereits vergeben.";
+    }
+  }
+
+  if (!error && action === "save") {
+    // POST/redirect/GET, so a refresh doesn't resubmit
+    return Astro.redirect(`/admin/edit/${id}?saved=1`, 303);
+  }
+  // preview: saved above, render the result below the form — but not for the
+  // home page, whose hero animation can't be replicated in the admin layout.
+  // error: keep the submitted values in the form so nothing is lost.
+  showPreview = !error && !isHome;
+  page = { ...page, ...fields };
+}
+---
+
+<Admin>
+  <h2>Seite bearbeiten: /{page.slug}</h2>
+  {Astro.url.searchParams.has("saved") && <p class="ok">Gespeichert.</p>}
+  {error && <p class="error">{error}</p>}
+  <form method="post">
+    <label>
+      Titel
+      <input name="title" value={page.title} required />
+    </label>
+    <label>
+      Slug
+      <input name="slug" value={page.slug} required pattern="[a-z0-9][a-z0-9-]*" />
+    </label>
+    <label>
+      Inhalt (HTML)
+      <textarea name="html" rows="24" set:text={page.html} />
+    </label>
+    <label class="check">
+      <input type="checkbox" name="published" checked={!!page.published} />
+      Veröffentlicht
+    </label>
+    {!isHome && (
+      <label class="check">
+        <input type="checkbox" name="show_in_nav" checked={!!page.show_in_nav} />
+        Im Footer-Menü
+      </label>
+    )}
+    <div class="actions">
+      <button name="action" value="save">Speichern</button>
+      {!isHome && (
+        <button name="action" value="preview">Speichern &amp; Vorschau</button>
+      )}
+    </div>
+  </form>
+  <form method="post">
+    <button name="action" value="delete" class="danger">Seite löschen</button>
+  </form>
+  {
+    showPreview && (
+      <section>
+        <h3>
+          Vorschau — <a href={`/${page.slug}`}>ganze Seite ansehen</a>
+        </h3>
+        <div class="preview-frame">
+          <Fragment set:html={enhanceImages(page.html)} />
+        </div>
+      </section>
+    )
+  }
+</Admin>

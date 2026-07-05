@@ -1,0 +1,23 @@
+---
+// Public renderer for CMS pages. Astro's route priority puts every static
+// route (the hand-written pages, /admin/*, /media/*) above this one, so it
+// only ever sees slugs that nothing else claimed. The draft gate (404 for
+// unpublished pages to non-authed visitors) and the page fetch live in
+// middleware.ts; this handler only renders what the middleware resolved.
+import Base from "../layouts/Base.astro";
+import { enhanceImages, getPageBySlug } from "../lib/db";
+
+// middleware.ts usually pre-fetches and stores the page in locals; fall back
+// to a direct query only if the middleware didn't run (e.g. dev HMR reruns
+// the page in isolation).
+const page = Astro.locals.page ?? getPageBySlug(Astro.params.slug!);
+if (!page) return new Response(null, { status: 404 });
+---
+
+<Base>
+  <main>
+    <a href="/">&lt; Home</a>
+    <h2>{page.title}</h2>
+    <Fragment set:html={enhanceImages(page.html)} />
+  </main>
+</Base>

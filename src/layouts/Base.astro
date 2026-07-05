@@ -2,6 +2,10 @@
 import "../styles/global.css";
 import "../styles/header.css";
 import Tents from "../components/Tents.astro";
+import { listNavPages } from "../lib/db";
+
+// CMS pages flagged "show in nav" appear in the footer of every page
+const cmsNav = listNavPages();
 ---
 
 <!doctype html>
@@ -34,7 +38,7 @@ import Tents from "../components/Tents.astro";
 
     <footer>
       <nav aria-label="Weitere Seiten">
-        <a href="/codeofconduct">Code of Conduct</a>
+        {cmsNav.map((p) => <a href={`/${p.slug}`}>{p.title}</a>)}
         <a href="https://n50.lat/privacypolicy.html">Datenschutzerklärung</a>
         <a href="https://n50.lat/imprint.html">Impressum</a>
         <a href="https://github.com/zebreus/n50-camp">Seite bearbeiten</a>

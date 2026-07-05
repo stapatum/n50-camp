@@ -1,15 +1,21 @@
 ---
-import type { TentPlacement } from "./tent";
-import { tentStyle } from "./tent";
-interface Props extends TentPlacement {
+// --row-* and --angle feed the hero-arc→header-line fly (see .tent in
+// header.css, driven by --bend on body). rowX/rowZ default to the scene
+// centerline (0); the side tents pass the baked STL lateral correction.
+interface Props {
+  rowX?: number;
+  rowY: number;
+  rowZ?: number;
+  angle: number;
   heroOnly?: boolean;
 }
-const props = Astro.props;
+const { rowX = 0, rowY, rowZ = 0, angle, heroOnly } = Astro.props;
+const style = `--row-x:${rowX}px;--row-y:${rowY}px;--row-z:${rowZ}px;--angle:${angle}deg`;
 ---
 
 <div
-  class:list={["tent", { "hero-only": props.heroOnly }]}
-  style={tentStyle(props)}
+  class:list={["tent", { "hero-only": heroOnly }]}
+  style={style}
 >
   <div
     class="face"

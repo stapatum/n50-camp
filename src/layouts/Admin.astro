@@ -1,0 +1,29 @@
+---
+// Minimal chrome for the admin area: no 3D tent header, just a slim bar and a
+// centered column. global.css keeps font and colors consistent with the site.
+import "../styles/global.css";
+import "../styles/admin.css";
+---
+
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex" />
+    <title>N50CAMP Admin</title>
+  </head>
+  <body>
+    <header id="admin-header">
+      <strong>N50CAMP Admin</strong>
+      <nav>
+        <a href="/admin">Seiten</a>
+        <a href="/admin/media">Medien</a>
+        <a href="/">Seite ansehen</a>
+      </nav>
+    </header>
+    <main class="admin">
+      <slot />
+    </main>
+  </body>
+</html>

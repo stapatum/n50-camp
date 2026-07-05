@@ -1,0 +1,102 @@
+/* admin-area chrome and form styling; loaded only by Admin.astro, never on the
+   public site. Lives in a global stylesheet (not scoped styles) because it has
+   to style content slotted in from the admin pages. */
+
+#admin-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  max-width: 70ch;
+  margin: 0 auto;
+  padding: 0.8rem 28px;
+  border-bottom: 1px solid #333;
+}
+#admin-header nav {
+  display: flex;
+  gap: 1.5rem;
+  align-items: baseline;
+}
+/* main.admin outranks global.css's `main` rules (which clear the 3D header
+   band the admin doesn't have) */
+main.admin {
+  padding: 1.5rem 28px;
+  font-size: 1em;
+}
+
+main.admin label {
+  display: block;
+  margin: 0 0 1rem;
+}
+main.admin label.check {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+main.admin input:not([type="checkbox"]),
+main.admin textarea {
+  display: block;
+  width: 100%;
+  margin-top: 0.2rem;
+  padding: 0.4rem 0.6rem;
+  background: #111;
+  border: 1px solid #444;
+  color: #ddd;
+  font: inherit;
+}
+main.admin textarea {
+  font-family: monospace;
+  font-size: 0.9em;
+  line-height: 1.4;
+}
+main.admin button {
+  padding: 0.4rem 1rem;
+  background: #222;
+  border: 1px solid #555;
+  color: #ddd;
+  font: inherit;
+  cursor: pointer;
+}
+main.admin button:hover,
+main.admin button:focus-visible {
+  border-color: #888;
+  color: #fff;
+}
+main.admin button.danger {
+  border-color: #a33;
+  color: #f88;
+}
+main.admin .actions {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+main.admin table {
+  width: 100%;
+  border-collapse: collapse;
+}
+main.admin th,
+main.admin td {
+  text-align: left;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid #333;
+}
+main.admin td img {
+  max-height: 4em;
+  max-width: 8em;
+}
+
+main.admin .ok {
+  color: #8f8;
+}
+main.admin .error {
+  color: #f88;
+}
+
+main.admin .preview-frame {
+  border: 1px dashed #555;
+  padding: 0 1rem;
+  margin-top: 1rem;
+}

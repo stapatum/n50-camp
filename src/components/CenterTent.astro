@@ -1,11 +1,18 @@
 ---
-import type { TentPlacement } from "./tent";
-import { tentStyle } from "./tent";
-type Props = TentPlacement;
-const props = Astro.props;
+// --row-* and --angle feed the hero-arc→header-line fly (see .tent in
+// header.css, driven by --bend on body). rowX/rowZ default to the scene
+// centerline (0).
+type Props = {
+  rowX?: number;
+  rowY: number;
+  rowZ?: number;
+  angle: number;
+};
+const { rowX = 0, rowY, rowZ = 0, angle } = Astro.props;
+const style = `--row-x:${rowX}px;--row-y:${rowY}px;--row-z:${rowZ}px;--angle:${angle}deg`;
 ---
 
-<div class="tent" style={tentStyle(props)}>
+<div class="tent" style={style}>
   <div
     class="face"
     style="width:754.92px;height:291.38px;transform:translate3d(-377.47px,-206.04px,-71.78px) rotateX(45.07deg)"

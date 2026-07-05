@@ -1,0 +1,75 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { createPage, listPages, RESERVED_SLUGS, SLUG_RE } from "../../lib/db";
+
+let error: string | null = null;
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const slug = String(form.get("slug") ?? "").trim();
+  const title = String(form.get("title") ?? "").trim();
+  if (!SLUG_RE.test(slug) || RESERVED_SLUGS.has(slug)) {
+    error = "Ungültiger oder reservierter Slug (erlaubt: a-z, 0-9, Bindestrich).";
+  } else if (!title) {
+    error = "Titel fehlt.";
+  } else {
+    let newId: number | null = null;
+    try {
+      newId = createPage(slug, title);
+    } catch {
+      error = "Slug bereits vergeben.";
+    }
+    if (newId !== null) return Astro.redirect(`/admin/edit/${newId}`, 303);
+  }
+}
+
+const pages = listPages();
+---
+
+<Admin>
+  <h2>Seiten</h2>
+  {
+    pages.length === 0 ? (
+      <p>Noch keine Seiten.</p>
+    ) : (
+      <table>
+        <thead>
+          <tr>
+            <th>Slug</th>
+            <th>Titel</th>
+            <th>Status</th>
+            <th>Menü</th>
+            <th>Geändert</th>
+          </tr>
+        </thead>
+        <tbody>
+          {pages.map((p) => (
+            <tr>
+              <td>
+                <a href={`/admin/edit/${p.id}`}>/{p.slug}</a>
+              </td>
+              <td>{p.title}</td>
+              <td>{p.published ? "veröffentlicht" : "Entwurf"}</td>
+              <td>{p.show_in_nav ? "✓" : ""}</td>
+              <td>{p.updated_at}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    )
+  }
+
+  <h3>Neue Seite</h3>
+  {error && <p class="error">{error}</p>}
+  <form method="post">
+    <label>
+      Titel
+      <input name="title" required />
+    </label>
+    <label>
+      Slug
+      <input name="slug" required pattern="[a-z0-9][a-z0-9-]*" />
+    </label>
+    <button>Anlegen</button>
+  </form>
+</Admin>

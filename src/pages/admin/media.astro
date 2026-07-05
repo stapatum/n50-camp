@@ -1,0 +1,98 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import {
+  deleteMedia,
+  insertMedia,
+  insertMediaVariant,
+  listMedia,
+  processImage,
+} from "../../lib/db";
+
+const MAX_UPLOAD = 25 * 1024 * 1024;
+let error: string | null = null;
+
+if (Astro.request.method === "POST") {
+  // formData() buffers the whole body in memory and the node adapter has no
+  // size limit of its own — reject oversized uploads before parsing
+  if (Number(Astro.request.headers.get("content-length")) > MAX_UPLOAD) {
+    error = "Datei zu groß (max. 25 MB).";
+  } else {
+    const form = await Astro.request.formData();
+    if (form.get("action") === "delete") {
+      deleteMedia(Number(form.get("id")));
+      return Astro.redirect("/admin/media", 303);
+    }
+    const file = form.get("file");
+    if (!(file instanceof File) || file.size === 0) {
+      error = "Keine Datei ausgewählt.";
+    } else {
+      const filename = file.name.replace(/[^A-Za-z0-9._-]/g, "_") || "datei";
+      const mime = file.type || "application/octet-stream";
+      const data = new Uint8Array(await file.arrayBuffer());
+      // probe dimensions and pre-generate downscaled webp variants once, at
+      // upload time — pages then get srcset for free with zero request cost
+      const processed = await processImage(data, mime);
+      const id = insertMedia(filename, mime, data, processed.width, processed.height);
+      for (const variant of processed.variants) {
+        insertMediaVariant(id, variant.width, variant.data);
+      }
+      return Astro.redirect("/admin/media", 303);
+    }
+  }
+}
+
+const items = listMedia();
+const fmtSize = (n: number) =>
+  n < 1024 * 1024 ? `${Math.round(n / 1024)} kB` : `${(n / 1024 / 1024).toFixed(1)} MB`;
+---
+
+<Admin>
+  <h2>Medien</h2>
+  {error && <p class="error">{error}</p>}
+  <form method="post" enctype="multipart/form-data">
+    <label>
+      Bild hochladen (max. 25 MB)
+      <input type="file" name="file" required accept="image/*" />
+    </label>
+    <button>Hochladen</button>
+  </form>
+
+  {
+    items.length > 0 && (
+      <table>
+        <thead>
+          <tr>
+            <th />
+            <th>URL (in Seiten einfügen)</th>
+            <th>Größe</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((m) => {
+            const url = `/media/${m.id}/${m.filename}`;
+            return (
+              <tr>
+                <td>
+                  <img src={url} alt="" loading="lazy" />
+                </td>
+                <td>
+                  <code>{url}</code>
+                </td>
+                <td>{fmtSize(m.size)}</td>
+                <td>
+                  <form method="post">
+                    <input type="hidden" name="id" value={m.id} />
+                    <button name="action" value="delete" class="danger">
+                      Löschen
+                    </button>
+                  </form>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    )
+  }
+</Admin>
