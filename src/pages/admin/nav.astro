@@ -1,0 +1,158 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import type { NavPlacement } from "../../lib/db";
+import {
+  createNavLink,
+  deleteNavLink,
+  listNavLinks,
+  moveNavLink,
+  updateNavLink,
+} from "../../lib/db";
+
+let error: string | null = null;
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const action = String(form.get("action") ?? "");
+  const label = String(form.get("label") ?? "").trim();
+  const url = String(form.get("url") ?? "").trim();
+  const placement = String(form.get("placement") ?? "top") as NavPlacement;
+
+  if (action === "create") {
+    if (!label || !url) {
+      error = "Label und URL fehlen.";
+    } else if (placement !== "top" && placement !== "bottom") {
+      error = "Ungültige Position.";
+    } else {
+      createNavLink(label, url, placement);
+      return Astro.redirect("/admin/nav", 303);
+    }
+  } else if (action === "update") {
+    const id = Number(form.get("id"));
+    if (!id || !label || !url) {
+      error = "Label und URL fehlen.";
+    } else {
+      updateNavLink(id, label, url);
+      return Astro.redirect("/admin/nav", 303);
+    }
+  } else if (action === "delete") {
+    deleteNavLink(Number(form.get("id")));
+    return Astro.redirect("/admin/nav", 303);
+  } else if (action === "up") {
+    moveNavLink(Number(form.get("id")), -1);
+    return Astro.redirect("/admin/nav", 303);
+  } else if (action === "down") {
+    moveNavLink(Number(form.get("id")), 1);
+    return Astro.redirect("/admin/nav", 303);
+  }
+}
+
+const topLinks = listNavLinks("top");
+const bottomLinks = listNavLinks("bottom");
+---
+
+<Admin>
+  <h2>Navigation</h2>
+  <p class="hint">
+    Links im Kopfbereich (Top) und Fußbereich (Footer) der Seite. Interne
+    Seiten als <code>/slug</code>, externe als volle URL (<code>https://…</code>
+    oder <code>mailto:…</code>). Seiten-Links lassen sich auch direkt im
+    <a href="/admin">Seiten-Editor</a> per Checkbox hinzufügen.
+  </p>
+
+  {error && <p class="error">{error}</p>}
+
+  <h3>Top-Navigation (Header)</h3>
+  {
+    topLinks.length === 0 ? (
+      <p>Noch keine Links.</p>
+    ) : (
+      <ul class="nav-list">
+        {topLinks.map((link, k) => (
+          <li class="nav-row">
+            <form method="post" class="nav-edit">
+              <input type="hidden" name="id" value={link.id} />
+              <input type="hidden" name="action" value="update" />
+              <input name="label" value={link.label} required placeholder="Label" />
+              <input name="url" value={link.url} required placeholder="URL" />
+              <button>Speichern</button>
+            </form>
+            <form method="post" class="nav-actions">
+              <input type="hidden" name="id" value={link.id} />
+              <button name="action" value="up" type="submit" disabled={k === 0} title="Nach oben">
+                ↑
+              </button>
+              <button
+                name="action"
+                value="down"
+                type="submit"
+                disabled={k === topLinks.length - 1}
+                title="Nach unten"
+              >
+                ↓
+              </button>
+              <button name="action" value="delete" class="danger" title="Löschen">
+                ✕
+              </button>
+            </form>
+          </li>
+        ))}
+      </ul>
+    )
+  }
+
+  <h3>Footer-Navigation</h3>
+  {
+    bottomLinks.length === 0 ? (
+      <p>Noch keine Links.</p>
+    ) : (
+      <ul class="nav-list">
+        {bottomLinks.map((link, k) => (
+          <li class="nav-row">
+            <form method="post" class="nav-edit">
+              <input type="hidden" name="id" value={link.id} />
+              <input type="hidden" name="action" value="update" />
+              <input name="label" value={link.label} required placeholder="Label" />
+              <input name="url" value={link.url} required placeholder="URL" />
+              <button>Speichern</button>
+            </form>
+            <form method="post" class="nav-actions">
+              <input type="hidden" name="id" value={link.id} />
+              <button name="action" value="up" type="submit" disabled={k === 0} title="Nach oben">
+                ↑
+              </button>
+              <button
+                name="action"
+                value="down"
+                type="submit"
+                disabled={k === bottomLinks.length - 1}
+                title="Nach unten"
+              >
+                ↓
+              </button>
+              <button name="action" value="delete" class="danger" title="Löschen">
+                ✕
+              </button>
+            </form>
+          </li>
+        ))}
+      </ul>
+    )
+  }
+
+  <h3>Neuer Link</h3>
+  <form method="post" class="nav-edit nav-create">
+    <input type="hidden" name="action" value="create" />
+    <input name="label" required placeholder="Label" />
+    <input name="url" required placeholder="/slug oder https://…" />
+    <label class="radio">
+      <input type="radio" name="placement" value="top" checked />
+      Top
+    </label>
+    <label class="radio">
+      <input type="radio" name="placement" value="bottom" />
+      Footer
+    </label>
+    <button>Anlegen</button>
+  </form>
+</Admin>

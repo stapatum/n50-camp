@@ -100,3 +100,60 @@ main.admin .preview-frame {
   padding: 0 1rem;
   margin-top: 1rem;
 }
+
+main.admin .hint {
+  color: #999;
+  font-size: 0.9em;
+}
+
+/* nav-link editor: each link is one row, edit form + reorder form side by side */
+main.admin ul.nav-list {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+main.admin .nav-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+main.admin form.nav-edit {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+}
+main.admin form.nav-edit input {
+  flex: 1 1 14ch;
+  min-width: 10ch;
+  margin: 0;
+}
+main.admin form.nav-actions {
+  display: flex;
+  gap: 0.25rem;
+}
+main.admin form.nav-actions button {
+  padding: 0.4rem 0.6rem;
+}
+main.admin form.nav-edit button {
+  flex: 0 0 auto;
+}
+main.admin form.nav-create {
+  align-items: flex-end;
+}
+main.admin label.radio {
+  display: inline-flex;
+  gap: 0.3rem;
+  align-items: center;
+  margin: 0;
+  font-size: 0.9em;
+}
+main.admin label.radio input {
+  width: auto;
+  margin: 0;
+}

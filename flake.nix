@@ -305,7 +305,7 @@
               };
               # world-readable, but it's a throwaway VM test password
               environment.etc."n50-camp-test-password".text = "vmtestpw";
-              environment.systemPackages = [ pkgs.curl ];
+              environment.systemPackages = [ pkgs.curl pkgs.unzip ];
             };
 
             testScript = ''
@@ -400,6 +400,88 @@
                   machine.succeed("curl -sf " + base + "/vmtest | grep sandboxed > /dev/null")
                   machine.succeed("test -f /var/lib/n50-camp/cms.db")
 
+              with subtest("admin-editable nav links (top + bottom) work"):
+                  # seeded top links appear in the header
+                  machine.succeed("curl -sf " + base + "/ | grep 'CfP' > /dev/null")
+                  machine.succeed("curl -sf " + base + "/ | grep 'Tickets' > /dev/null")
+                  # seeded bottom links appear in the footer
+                  machine.succeed("curl -sf " + base + "/ | grep 'Datenschutzerklärung' > /dev/null")
+                  machine.succeed("curl -sf " + base + "/ | grep 'Code Of Conduct' > /dev/null")
+                  # add a top link through the admin nav UI
+                  machine.succeed(
+                      "curl -sf -X POST " + auth
+                      + " --data-urlencode action=create"
+                      + " --data-urlencode label=Testlink"
+                      + " --data-urlencode url=/vmtest"
+                      + " --data-urlencode placement=top " + base + "/admin/nav"
+                  )
+                  machine.succeed("curl -sf " + base + "/ | grep 'Testlink' > /dev/null")
+                  # reorder: move the new link up — it should now precede Tickets
+                  nav_id = machine.succeed(
+                      "curl -sf " + auth + " " + base + "/admin/nav"
+                      + " | grep -B2 'Testlink'"
+                      + " | grep -oE 'value=\"[0-9]+\"' | grep -oE '[0-9]+' | head -1"
+                  ).strip()
+                  assert nav_id, "could not find Testlink id in admin nav page"
+                  machine.succeed(
+                      "curl -sf -X POST " + auth
+                      + " --data-urlencode action=up"
+                      + " --data-urlencode id=" + nav_id + " " + base + "/admin/nav"
+                  )
+                  html = machine.succeed("curl -sf " + base + "/")
+                  assert html.index("Testlink") < html.index("Tickets"), "nav reorder had no effect"
+                  # delete the test link
+                  machine.succeed(
+                      "curl -sf -X POST " + auth
+                      + " --data-urlencode action=delete"
+                      + " --data-urlencode id=" + nav_id + " " + base + "/admin/nav"
+                  )
+                  machine.fail("curl -sf " + base + "/ | grep Testlink")
+                  # page editor checkbox: add vmtest to the bottom nav
+                  machine.succeed(
+                      "curl -sf -X POST " + auth
+                      + " --data-urlencode action=save"
+                      + " --data-urlencode title=VM"
+                      + " --data-urlencode slug=vmtest"
+                      + " --data-urlencode 'html=<p>sandboxed</p>'"
+                      + " --data-urlencode published=1"
+                      + " --data-urlencode show_in_bottom_nav=on " + base + "/admin/edit/" + page_id
+                  )
+                  machine.succeed("curl -sf " + base + "/ | grep '>VM<' > /dev/null")
+                  # uncheck: remove from bottom nav
+                  machine.succeed(
+                      "curl -sf -X POST " + auth
+                      + " --data-urlencode action=save"
+                      + " --data-urlencode title=VM"
+                      + " --data-urlencode slug=vmtest"
+                      + " --data-urlencode 'html=<p>sandboxed</p>'"
+                      + " --data-urlencode published=1 " + base + "/admin/edit/" + page_id
+                  )
+                  # VM should no longer appear as a footer link on the home page
+                  # (the home page content is "edited home", so ">VM<" only
+                  # appears if the footer nav link is still present)
+                  machine.fail("curl -sf " + base + "/ | grep '>VM<'")
+
+              with subtest("admin export produces a valid zip of the DB state"):
+                  # download the export and check it's a real zip with the
+                  # expected seed-shaped contents
+                  machine.succeed(
+                      "curl -sf " + auth + " " + base + "/admin/export -o /tmp/export.zip"
+                  )
+                  machine.succeed("test -s /tmp/export.zip")
+                  # zip magic bytes (PK\x03\x04)
+                  machine.succeed("head -c 4 /tmp/export.zip | grep -q 'PK'")
+                  out = machine.succeed(
+                      "unzip -l /tmp/export.zip"
+                  )
+                  assert "config.json" in out, "export missing config.json"
+                  assert "pages/index.html" in out, "export missing a page"
+                  assert "images/anreise.jpeg" in out, "export missing an image"
+                  # config.json round-trips with the nav shape the seed uses
+                  cfg = machine.succeed("unzip -p /tmp/export.zip config.json")
+                  assert '"placement": "top"' in cfg, "config.json missing top nav"
+                  assert '"pageSlug": "lageplan"' in cfg, "config.json missing pageSlug"
+
               # Probe the mount namespace of the running service. Only the app
               # closure exists inside the chroot, so the probes run through its
               # bash and use nothing but shell builtins.
@@ -451,6 +533,9 @@
                   machine.succeed("curl -sf " + base + "/vmtest | grep sandboxed > /dev/null")
                   # seed pages survive and aren't duplicated by reseed
                   machine.succeed("curl -sf " + base + "/codeofconduct | grep 'Code Of Conduct' > /dev/null")
+                  # top + bottom nav links persist across restart (one-time seed doesn't duplicate)
+                  machine.succeed("curl -sf " + base + "/ | grep 'CfP' > /dev/null")
+                  machine.succeed("curl -sf " + base + "/ | grep 'Datenschutzerklärung' > /dev/null")
             '';
           };
         }

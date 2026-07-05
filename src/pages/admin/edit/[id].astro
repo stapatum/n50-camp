@@ -4,6 +4,7 @@ import {
   deletePage,
   enhanceImages,
   getPage,
+  getPageNavPlacements,
   RESERVED_SLUGS,
   SLUG_RE,
   updatePage,
@@ -14,12 +15,15 @@ let page = getPage(id);
 if (!page) return new Response(null, { status: 404 });
 
 // The home page (slug "index") is special: it renders through index.astro,
-// not [slug].astro, so the inline preview and the footer-nav toggle don't
-// apply to it.
+// not [slug].astro, so the inline preview and the nav toggles don't apply.
 const isHome = page.slug === "index";
 
 let error: string | null = null;
 let showPreview = false;
+
+// Current nav membership for the checkboxes — re-computed after a POST so the
+// form reflects what was just saved.
+let navPlacements = getPageNavPlacements(id);
 
 if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
@@ -35,8 +39,9 @@ if (Astro.request.method === "POST") {
     title: String(form.get("title") ?? "").trim(),
     html: String(form.get("html") ?? ""),
     published: form.has("published") ? 1 : 0,
-    // the home page can never appear in the footer nav
-    show_in_nav: isHome ? 0 : form.has("show_in_nav") ? 1 : 0,
+    // the home page can never appear in any nav
+    showInTopNav: !isHome && form.has("show_in_top_nav"),
+    showInBottomNav: !isHome && form.has("show_in_bottom_nav"),
   };
 
   // Reserved slugs are only blocked when *renaming* into them — keeping a
@@ -48,10 +53,15 @@ if (Astro.request.method === "POST") {
     error = "Titel fehlt.";
   } else {
     try {
-      updatePage(id, fields);
+      updatePage(id, fields, page.slug);
     } catch {
       error = "Slug bereits vergeben.";
     }
+  }
+
+  if (!error) {
+    // refresh so the checkboxes reflect the saved state
+    navPlacements = getPageNavPlacements(id);
   }
 
   if (!error && action === "save") {
@@ -88,10 +98,16 @@ if (Astro.request.method === "POST") {
       Veröffentlicht
     </label>
     {!isHome && (
-      <label class="check">
-        <input type="checkbox" name="show_in_nav" checked={!!page.show_in_nav} />
-        Im Footer-Menü
-      </label>
+      <>
+        <label class="check">
+          <input type="checkbox" name="show_in_top_nav" checked={navPlacements.has("top")} />
+          In Top-Navigation
+        </label>
+        <label class="check">
+          <input type="checkbox" name="show_in_bottom_nav" checked={navPlacements.has("bottom")} />
+          In Footer-Navigation
+        </label>
+      </>
     )}
     <div class="actions">
       <button name="action" value="save">Speichern</button>

@@ -27,7 +27,6 @@ db.exec(`
     title       TEXT NOT NULL,
     html        TEXT NOT NULL DEFAULT '',
     published   INTEGER NOT NULL DEFAULT 0,
-    show_in_nav INTEGER NOT NULL DEFAULT 0,
     provisioned INTEGER NOT NULL DEFAULT 0,
     edited      INTEGER NOT NULL DEFAULT 0,
     created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
@@ -54,7 +53,39 @@ db.exec(`
     data     BLOB NOT NULL,
     UNIQUE (media_id, width)
   );
+
+  CREATE TABLE IF NOT EXISTS nav_links (
+    id          INTEGER PRIMARY KEY,
+    label       TEXT NOT NULL,
+    url         TEXT NOT NULL,
+    placement   TEXT NOT NULL DEFAULT 'top',
+    position    REAL NOT NULL,
+    page_id     INTEGER REFERENCES pages(id) ON DELETE CASCADE,
+    provisioned INTEGER NOT NULL DEFAULT 0,
+    edited      INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_nav_placement ON nav_links(placement);
+  CREATE INDEX IF NOT EXISTS idx_nav_page ON nav_links(page_id);
 `);
+
+// ── migrations for existing databases ──────────────────────────────────────
+// Earlier versions of the schema lacked `placement`/`page_id` on nav_links,
+// and `pages` had a `show_in_nav` column that is now replaced by nav_links
+// rows. Add the new columns in place; the old pages column is left as a
+// harmless orphan (SQLite can't drop it before 3.35, and even then ALTER
+// TABLE DROP COLUMN is fiddly in WAL mode).
+{
+  const navCols = db.prepare("PRAGMA table_info(nav_links)").all() as { name: string }[];
+  if (!navCols.some((c) => c.name === "placement")) {
+    db.exec("ALTER TABLE nav_links ADD COLUMN placement TEXT NOT NULL DEFAULT 'top'");
+  }
+  if (!navCols.some((c) => c.name === "page_id")) {
+    db.exec("ALTER TABLE nav_links ADD COLUMN page_id INTEGER REFERENCES pages(id) ON DELETE CASCADE");
+  }
+}
 
 export interface Page {
   id: number;
@@ -62,7 +93,6 @@ export interface Page {
   title: string;
   html: string;
   published: number;
-  show_in_nav: number;
   provisioned: number;
   edited: number;
   created_at: string;
@@ -79,6 +109,21 @@ interface MediaItem {
   created_at: string;
 }
 
+export interface NavLink {
+  id: number;
+  label: string;
+  url: string;
+  placement: "top" | "bottom";
+  position: number;
+  page_id: number | null;
+  provisioned: number;
+  edited: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export type NavPlacement = "top" | "bottom";
+
 // Slugs that must never be claimed by a CMS page: Astro's static routes
 // always outrank the [slug] route, so a colliding page would silently never
 // render. The seeded built-in pages (anreise, versorgung, …) are NOT
@@ -93,17 +138,14 @@ export const RESERVED_SLUGS = new Set([
 ]);
 export const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
-const stNav = db.prepare(
-  "SELECT slug, title FROM pages WHERE published = 1 AND show_in_nav = 1 ORDER BY title",
-);
 const stBySlugAny = db.prepare("SELECT * FROM pages WHERE slug = ?");
 const stList = db.prepare(
-  "SELECT id, slug, title, published, show_in_nav, updated_at FROM pages ORDER BY slug",
+  "SELECT id, slug, title, published, updated_at FROM pages ORDER BY slug",
 );
 const stById = db.prepare("SELECT * FROM pages WHERE id = ?");
 const stCreate = db.prepare("INSERT INTO pages (slug, title) VALUES (?, ?)");
 const stUpdate = db.prepare(`
-  UPDATE pages SET slug = ?, title = ?, html = ?, published = ?, show_in_nav = ?,
+  UPDATE pages SET slug = ?, title = ?, html = ?, published = ?,
     edited = CASE WHEN provisioned = 1 THEN 1 ELSE edited END,
     updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
   WHERE id = ?
@@ -133,7 +175,33 @@ const stVariantWidths = db.prepare(
   "SELECT width FROM media_variants WHERE media_id = ? ORDER BY width",
 );
 
-export const listNavPages = () => stNav.all() as unknown as Pick<Page, "slug" | "title">[];
+const stNavList = db.prepare(
+  "SELECT id, label, url, placement, position, page_id FROM nav_links WHERE placement = ? ORDER BY position",
+);
+const stNavCreate = db.prepare(
+  "INSERT INTO nav_links (label, url, placement, position, page_id) VALUES (?, ?, ?, ?, ?)",
+);
+const stNavUpdate = db.prepare(`
+  UPDATE nav_links SET label = ?, url = ?, edited = CASE WHEN provisioned = 1 THEN 1 ELSE edited END,
+    updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+  WHERE id = ?
+`);
+const stNavDelete = db.prepare("DELETE FROM nav_links WHERE id = ?");
+const stNavMaxPos = db.prepare(
+  "SELECT COALESCE(MAX(position), 0) AS m FROM nav_links WHERE placement = ?",
+);
+const stNavSetPos = db.prepare(
+  "UPDATE nav_links SET position = ?, edited = CASE WHEN provisioned = 1 THEN 1 ELSE edited END WHERE id = ?",
+);
+const stNavByPage = db.prepare(
+  "SELECT id, placement FROM nav_links WHERE page_id = ? ORDER BY placement",
+);
+const stNavDeleteByPage = db.prepare(
+  "DELETE FROM nav_links WHERE page_id = ? AND placement = ?",
+);
+const stNavUrlUpdate = db.prepare(
+  "UPDATE nav_links SET url = ? WHERE page_id = ?",
+);
 
 export const getPageBySlug = (slug: string) =>
   stBySlugAny.get(slug) as unknown as Page | undefined;
@@ -148,16 +216,36 @@ export const createPage = (slug: string, title: string) =>
 
 export const updatePage = (
   id: number,
-  fields: Pick<Page, "slug" | "title" | "html" | "published" | "show_in_nav">,
+  fields: Pick<Page, "slug" | "title" | "html" | "published"> & {
+    showInTopNav: boolean;
+    showInBottomNav: boolean;
+  },
+  prevSlug: string,
 ) => {
-  stUpdate.run(
-    fields.slug,
-    fields.title,
-    fields.html,
-    fields.published,
-    fields.show_in_nav,
-    id,
-  );
+  stUpdate.run(fields.slug, fields.title, fields.html, fields.published, id);
+
+  // If the slug changed, update the URL of any nav_links pointing at this page
+  // so they don't dangle. The label is left alone — the admin may have
+  // customised it in /admin/nav.
+  if (fields.slug !== prevSlug) {
+    stNavUrlUpdate.run(`/${fields.slug}`, id);
+  }
+
+  // Sync the page's nav_link membership for each placement. Checking a box
+  // creates a nav_link at the end of its placement (if one doesn't already
+  // exist); unchecking deletes it.
+  for (const placement of ["top", "bottom"] as const) {
+    const enabled = placement === "top" ? fields.showInTopNav : fields.showInBottomNav;
+    const existing = (stNavByPage.all(id) as { id: number; placement: string }[]).find(
+      (r) => r.placement === placement,
+    );
+    if (enabled && !existing) {
+      const maxPos = (stNavMaxPos.get(placement) as { m: number }).m;
+      stNavCreate.run(fields.title, `/${fields.slug}`, placement, maxPos + 1, id);
+    } else if (!enabled && existing) {
+      stNavDeleteByPage.run(id, placement);
+    }
+  }
 };
 
 export const deletePage = (id: number) => {
@@ -192,6 +280,69 @@ export const getMediaVariant = (mediaId: number, width: number) =>
 
 const mediaVariantWidths = (mediaId: number) =>
   (stVariantWidths.all(mediaId) as unknown as { width: number }[]).map((r) => r.width);
+
+// ── nav links ──────────────────────────────────────────────────────────────
+// Admin-editable navigation for both the header (top) and the footer (bottom).
+// A nav_link is either:
+//   - page-linked (page_id set): created/destroyed from the page editor's
+//     checkboxes; url and label start from the page's slug/title but the admin
+//     can edit the label freely in /admin/nav.
+//   - external (page_id NULL): a free-form label+url, managed only from
+//     /admin/nav.
+// `position` is per-placement; reorders re-pack to dense integers so future
+// midpoints never run out of precision.
+
+export const listNavLinks = (placement: NavPlacement) =>
+  stNavList.all(placement) as unknown as Pick<
+    NavLink,
+    "id" | "label" | "url" | "placement" | "position" | "page_id"
+  >[];
+
+// Which placements a page currently appears in — drives the checkboxes in the
+// page editor.
+export const getPageNavPlacements = (pageId: number): Set<NavPlacement> => {
+  const rows = stNavByPage.all(pageId) as { id: number; placement: string }[];
+  return new Set(rows.filter((r) => r.placement === "top" || r.placement === "bottom").map((r) => r.placement as NavPlacement));
+};
+
+export const createNavLink = (label: string, url: string, placement: NavPlacement) => {
+  const maxPos = (stNavMaxPos.get(placement) as { m: number }).m;
+  return Number(stNavCreate.run(label, url, placement, maxPos + 1, null).lastInsertRowid);
+};
+
+export const updateNavLink = (id: number, label: string, url: string) => {
+  stNavUpdate.run(label, url, id);
+};
+
+export const deleteNavLink = (id: number) => {
+  stNavDelete.run(id);
+};
+
+// Swap two adjacent links by id within the same placement. After any reorder
+// we re-pack positions to a dense 1,2,3,… sequence.
+export const moveNavLink = (id: number, dir: -1 | 1) => {
+  // Find the link to learn its placement, then list only that placement so
+  // the swap and re-pack are scoped correctly.
+  const all = db.prepare("SELECT placement FROM nav_links WHERE id = ?").get(id) as
+    | { placement: string }
+    | undefined;
+  if (!all) return;
+  const placement = all.placement as NavPlacement;
+  const links = listNavLinks(placement);
+  const idx = links.findIndex((l) => l.id === id);
+  const swapWith = idx + dir;
+  if (idx < 0 || swapWith < 0 || swapWith >= links.length) return;
+  const reordered = [...links];
+  [reordered[idx], reordered[swapWith]] = [reordered[swapWith], reordered[idx]];
+  db.exec("BEGIN");
+  try {
+    reordered.forEach((l, i) => stNavSetPos.run(i + 1, l.id));
+    db.exec("COMMIT");
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  }
+};
 
 // ── image processing ──────────────────────────────────────────────────────
 // Server-side image optimization for CMS media — the equivalent of what
@@ -292,8 +443,7 @@ export function enhanceImages(html: string): string {
 // Reseed policy:
 //   - page doesn't exist            → create it (provisioned=1, edited=0)
 //   - page exists, provisioned,
-//     not edited                    → overwrite title/html/show_in_nav from
-//                                     seed (picks up seed changes on restart)
+//     not edited                    → overwrite title/html from seed
 //   - page exists, provisioned,
 //     edited                        → skip (preserve admin edits)
 //   - page exists, not provisioned  → skip (user-created page)
@@ -318,22 +468,31 @@ const imageFiles = import.meta.glob("../../seed/images/*", {
   import: "default",
 }) as Record<string, string>;
 
+// Seed config (nav links). Bundled at build time via import.meta.glob so it
+// stays available in the sandboxed deployment with no runtime filesystem access.
+const configFiles = import.meta.glob("../../seed/config.json", {
+  eager: true,
+  query: "?raw",
+  import: "default",
+}) as Record<string, string>;
+const seedConfig = JSON.parse(configFiles["../../seed/config.json"]) as {
+  nav: { label: string; url: string; placement: NavPlacement; pageSlug?: string }[];
+};
+
 const basename = (p: string) => p.split("/").pop()!;
 
 // Parse minimal YAML frontmatter (---\nkey: value\n---) from the top of a
-// seed HTML file. Only `title` and `show_in_nav` are recognised.
+// seed HTML file. Only `title` is recognised.
 function parseFrontmatter(raw: string): {
   title: string;
-  showInNav: boolean;
   body: string;
 } {
   const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
-  if (!m) return { title: basename(raw), showInNav: false, body: raw };
+  if (!m) return { title: basename(raw), body: raw };
   const yaml = m[1];
   const body = m[2];
   const title = yaml.match(/^title:\s*(.+)$/m)?.[1]?.trim() ?? "Untitled";
-  const showInNav = /^show_in_nav:\s*true\s*$/m.test(yaml);
-  return { title, showInNav, body };
+  return { title, body };
 }
 
 // Decode a data URI (data:<mime>;base64,<data>) into raw bytes + mime type.
@@ -357,11 +516,12 @@ async function seedDatabase(): Promise<void> {
     "SELECT id, provisioned, edited FROM pages WHERE slug = ?",
   );
   const stInsertSeedPage = db.prepare(
-    "INSERT INTO pages (slug, title, html, published, show_in_nav, provisioned, edited) VALUES (?, ?, ?, 1, ?, 1, 0)",
+    "INSERT INTO pages (slug, title, html, published, provisioned, edited) VALUES (?, ?, ?, 1, 1, 0)",
   );
   const stUpdateSeedPage = db.prepare(
-    "UPDATE pages SET title = ?, html = ?, show_in_nav = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id = ?",
+    "UPDATE pages SET title = ?, html = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id = ?",
   );
+  const stGetPageIdBySlug = db.prepare("SELECT id FROM pages WHERE slug = ?");
 
   // 1. Seed images — each image is inserted once and reused by ID on reseed.
   const imageIds: Record<string, number> = {};
@@ -391,9 +551,10 @@ async function seedDatabase(): Promise<void> {
   }
 
   // 2. Seed pages — substitute {{img:filename}} placeholders with real media URLs.
+  const pageIds: Record<string, number> = {};
   for (const [path, raw] of Object.entries(pageFiles)) {
     const slug = basename(path).replace(/\.html$/, "");
-    const { title, showInNav, body } = parseFrontmatter(raw);
+    const { title, body } = parseFrontmatter(raw);
     const html = body.replace(/\{\{img:([^}]+)\}\}/g, (_, fname: string) => {
       const id = imageIds[fname.trim()];
       if (!id) return `{{img:${fname.trim()}}}`;
@@ -404,11 +565,39 @@ async function seedDatabase(): Promise<void> {
       | { id: number; provisioned: number; edited: number }
       | undefined;
     if (!existing) {
-      stInsertSeedPage.run(slug, title, html, showInNav ? 1 : 0);
+      stInsertSeedPage.run(slug, title, html);
     } else if (existing.provisioned && !existing.edited) {
-      stUpdateSeedPage.run(title, html, showInNav ? 1 : 0, existing.id);
+      stUpdateSeedPage.run(title, html, existing.id);
     }
     // else: user-created or admin-edited → leave untouched
+    pageIds[slug] = (stGetPageIdBySlug.get(slug) as { id: number }).id;
+  }
+
+  // 3. Seed nav links — run ONCE, when no provisioned nav links exist yet.
+  //    Top and bottom nav share the same nav_links table (distinguished by
+  //    `placement`). Page-linked entries (pageSlug) get their page_id set so
+  //    the page editor checkboxes and slug-rename URL updates work.
+  const stNavCount = db.prepare(
+    "SELECT COUNT(*) AS c FROM nav_links WHERE provisioned = 1",
+  );
+  const navCount = (stNavCount.get() as { c: number }).c;
+  if (navCount === 0) {
+    const stInsertSeedNav = db.prepare(
+      "INSERT INTO nav_links (label, url, placement, position, page_id, provisioned, edited) VALUES (?, ?, ?, ?, ?, 1, 0)",
+    );
+    // position is per-placement, so track a counter for each
+    const pos: Record<NavPlacement, number> = { top: 0, bottom: 0 };
+    for (const link of seedConfig.nav) {
+      pos[link.placement]++;
+      const pageId = link.pageSlug ? pageIds[link.pageSlug] ?? null : null;
+      stInsertSeedNav.run(
+        link.label,
+        link.url,
+        link.placement,
+        pos[link.placement],
+        pageId,
+      );
+    }
   }
 }
 

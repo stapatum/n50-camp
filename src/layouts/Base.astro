@@ -2,10 +2,17 @@
 import "../styles/global.css";
 import "../styles/header.css";
 import Tents from "../components/Tents.astro";
-import { listNavPages } from "../lib/db";
+import { listNavLinks } from "../lib/db";
 
-// CMS pages flagged "show in nav" appear in the footer of every page
-const cmsNav = listNavPages();
+// Header nav links are admin-managed (see /admin/nav). The inline --i centred
+// at 1.5 keeps the row centred for any link count; the matching CSS formula is
+// (var(--i) − 1.5)·5em.
+const topNav = listNavLinks("top");
+const n = topNav.length;
+const iFor = (k: number) => (n <= 1 ? 1.5 : k - (n - 1) / 2 + 1.5);
+
+// Footer nav links share the same nav_links table (placement='bottom').
+const bottomNav = listNavLinks("bottom");
 ---
 
 <!doctype html>
@@ -23,11 +30,11 @@ const cmsNav = listNavPages();
         <h1>N50CAMP</h1>
         <nav>
           <ul>
-            <li><a href="mailto:camp@n50.lat">CfP</a></li>
-            <li><a href="/lageplan">Lageplan</a></li>
-            <li><a href="/merch">Merch</a></li>
-            <li><a href="https://engel.n50.camp">Engeln</a></li>
-            <li><a href="https://tickets.n50.camp">Tickets</a></li>
+            {topNav.map((link, k) => (
+              <li style={`--i:${iFor(k)}`}>
+                <a href={link.url}>{link.label}</a>
+              </li>
+            ))}
           </ul>
         </nav>
       </div>
@@ -38,10 +45,9 @@ const cmsNav = listNavPages();
 
     <footer>
       <nav aria-label="Weitere Seiten">
-        {cmsNav.map((p) => <a href={`/${p.slug}`}>{p.title}</a>)}
-        <a href="https://n50.lat/privacypolicy.html">Datenschutzerklärung</a>
-        <a href="https://n50.lat/imprint.html">Impressum</a>
-        <a href="https://github.com/zebreus/n50-camp">Seite bearbeiten</a>
+        {bottomNav.map((link) => (
+          <a href={link.url}>{link.label}</a>
+        ))}
       </nav>
     </footer>
   </body>

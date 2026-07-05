@@ -153,10 +153,12 @@ body {
 
 /* each link is placed from its index --i: stacked one line apart in the hero
    (p=0), spread across the docked row in the header (p=1). The horizontal offset
-   (--i − 1.5)·5em is centred on --i = 1.5 (the wordmark centre), so --i values
-   symmetric about 1.5 keep the row centred — for 5 links that's -0.5 … 3.5; the
-   5em sets the gap between links. The vertical term adds +0.5 so the hero stack
-   still starts at line 0 (just below the wordmark) instead of riding into it. */
+   (--i − 1.5)·5em is centred on --i = 1.5 (the wordmark centre), so the admin UI
+   sets --i inline per link as k − (N−1)/2 + 1.5 (0-indexed k, N links) to keep
+   the row centred for any count. The 5em sets the gap between links. The
+   vertical term adds +0.5 so the hero stack still starts at line 0 (just below
+   the wordmark) instead of riding into it. The fallback --i keeps a link
+   visible if the inline value is missing. */
 #wordmark li {
   --i: -0.5;
   position: absolute;
@@ -168,19 +170,6 @@ body {
       1px
     )
     scale(calc(0.92 + 0.08 * var(--p)));
-}
-
-#wordmark li:nth-child(2) {
-  --i: 0.5;
-}
-#wordmark li:nth-child(3) {
-  --i: 1.5;
-}
-#wordmark li:nth-child(4) {
-  --i: 2.5;
-}
-#wordmark li:nth-child(5) {
-  --i: 3.5;
 }
 
 /* ---------------------------------------------------------------------------

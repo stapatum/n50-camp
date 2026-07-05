@@ -38,7 +38,6 @@ const pages = listPages();
             <th>Slug</th>
             <th>Titel</th>
             <th>Status</th>
-            <th>Menü</th>
             <th>Geändert</th>
           </tr>
         </thead>
@@ -50,7 +49,6 @@ const pages = listPages();
               </td>
               <td>{p.title}</td>
               <td>{p.published ? "veröffentlicht" : "Entwurf"}</td>
-              <td>{p.show_in_nav ? "✓" : ""}</td>
               <td>{p.updated_at}</td>
             </tr>
           ))}
